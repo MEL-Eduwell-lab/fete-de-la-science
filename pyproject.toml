@@ -1,0 +1,15 @@
+[project]
+name = "fete-de-la-science"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "datasets>=5.0.1",
+    "ipykernel>=7.3.0",
+    "matplotlib>=3.11.1",
+    "pillow>=12.3.0",
+    "pip>=26.2.1",
+    "torch>=2.13.0",
+    "torchvision>=0.28.0",
+]

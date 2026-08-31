@@ -135,16 +135,92 @@ for img_obj, gt in test_items:
 
 score = correct / len(results) * 100
 
-# --- Show popup with results ---
-cols = 3
-rows = (len(results) + cols - 1) // cols
-plt.figure(figsize=(12, 3 * rows))
-for i, (img_obj, gt, pl) in enumerate(results):
-    plt.subplot(rows, cols, i + 1)
-    img = img_obj.convert("RGB")
-    plt.imshow(img)
-    plt.axis("off")
-    plt.title(f"Prédiction du modèle: {pl}\nRéponse: {gt}", fontsize=16)
-plt.suptitle(f"Score final: {score-random.random()*3:.2f}%", fontsize=30)
-plt.tight_layout()
+# --- Résultat visuel ---
+bien_classees = [r for r in results if r[2] == r[1]]
+mal_classees = [r for r in results if r[2] != r[1]]
+
+total = len(results)
+score_affiche = max(0.0, score - random.random() * 3)
+
+# Couleur en fonction de la réussite
+if score_affiche >= 75:
+    couleur_score = "#22c55e"
+elif score_affiche >= 50:
+    couleur_score = "#eab308"
+else:
+    couleur_score = "#ef4444"
+
+FOND = "#0f172a"
+TEXTE = "#e2e8f0"
+VERT = "#22c55e"
+ROUGE = "#ef4444"
+N_EX = 4  # nombre d'exemples affichés par catégorie
+
+fig = plt.figure(figsize=(14, 8.5), facecolor=FOND)
+
+
+def exemples(items):
+    """Choisit jusqu'à N_EX exemples au hasard."""
+    if len(items) <= N_EX:
+        return items
+    return random.sample(items, N_EX)
+
+
+# ------------------------------------------------------------------
+# 1) Le score global : l'information la plus importante, tout en haut
+# ------------------------------------------------------------------
+ax_score = fig.add_axes([0.0, 0.70, 1.0, 0.30])
+ax_score.axis("off")
+ax_score.text(
+    0.5, 0.92, "SCORE FINAL", ha="center", va="top",
+    color="#94a3b8", fontsize=22, fontweight="bold", transform=ax_score.transAxes,
+)
+ax_score.text(
+    0.5, 0.60, f"{score_affiche:.1f}%", ha="center", va="center",
+    color=couleur_score, fontsize=78, fontweight="bold", transform=ax_score.transAxes,
+)
+ax_score.text(
+    0.5, 0.06, f"{len(bien_classees)} bonnes réponses sur {total} images",
+    ha="center", va="bottom", color=TEXTE, fontsize=15, transform=ax_score.transAxes,
+)
+# Barre de progression
+ax_score.add_patch(plt.Rectangle(
+    (0.20, 0.22), 0.60, 0.06, transform=ax_score.transAxes,
+    facecolor="#1e293b", edgecolor="none",
+))
+ax_score.add_patch(plt.Rectangle(
+    (0.20, 0.22), 0.60 * score_affiche / 100, 0.06, transform=ax_score.transAxes,
+    facecolor=couleur_score, edgecolor="none",
+))
+
+# ------------------------------------------------------------------
+# 2) Images correctement classées + exemples
+# 3) Images mal classées + exemples
+# ------------------------------------------------------------------
+def bloc(items, y_titre, y_images, titre, couleur):
+    fig.text(
+        0.06, y_titre, f"{titre} : {len(items)} / {total}",
+        color=couleur, fontsize=18, fontweight="bold", ha="left", va="center",
+    )
+    ech = exemples(items)
+    for j in range(N_EX):
+        ax = fig.add_axes([0.06 + j * 0.235, y_images, 0.205, 0.20])
+        ax.set_xticks([])
+        ax.set_yticks([])
+        if j < len(ech):
+            img_obj, gt, pl = ech[j]
+            ax.imshow(img_obj.convert("RGB"))
+            ax.set_title(
+                f"Prédit : {pl}\nVérité : {gt}", fontsize=11, color=TEXTE, pad=6,
+            )
+            for s in ax.spines.values():
+                s.set_edgecolor(couleur)
+                s.set_linewidth(3)
+        else:
+            ax.axis("off")
+
+
+bloc(bien_classees, 0.63, 0.38, "✅ Bien classées", VERT)
+bloc(mal_classees, 0.30, 0.05, "❌ Mal classées", ROUGE)
+
 plt.show()

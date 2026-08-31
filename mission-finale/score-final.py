@@ -4,7 +4,7 @@ from torch import nn, optim
 from torch.utils.data import DataLoader, Dataset
 from torchvision import models, transforms
 from PIL import Image
-from datasets import load_from_disk
+from datasets import load_dataset
 import matplotlib.pyplot as plt
 from glob import glob
 import os
@@ -16,9 +16,17 @@ if choice == 2:
     exit()
 
 # --- Load datasets ---
+# Train parquet holds both classes; split it by the `class` column.
 print("Chargement des données...")
-reptilea = list(load_from_disk("rare-species-reptilea-trainset")["train"])
-amphibia = list(load_from_disk("rare-species-amphibia-trainset")["train"])
+full = list(
+    load_dataset(
+        "parquet",
+        data_files="dataset_reptilia_amphibia/train-00000-of-00001.parquet",
+        split="train",
+    )
+)
+reptilea = [r for r in full if r["class"] == "Reptilia"]
+amphibia = [r for r in full if r["class"] == "Amphibia"]
 print(f"Reptilea: {len(reptilea)}, Amphibia: {len(amphibia)}")
 
 # --- Dataset splits ---
@@ -101,26 +109,27 @@ for epoch in range(3):
         total_loss += loss.item()
     print(f"Epoch {epoch+1}: loss={total_loss/len(train_dl):.4f}")
 
-# --- Load test images ---
-test_dir = "mission-finale-testset"
-test_paths = sorted(glob(os.path.join(test_dir, "*.jpg")))
-test_items = []
-for p in test_paths:
-    name = os.path.basename(p)
-    gt = name.split("_")[0] if "_" in name else os.path.splitext(name)[0]
-    test_items.append((p, gt))
+# --- Load test images (held-out split, balanced across the 5 orders) ---
+test_data = list(
+    load_dataset(
+        "parquet",
+        data_files="dataset_reptilia_amphibia/test-00000-of-00001.parquet",
+        split="train",
+    )
+)
+test_items = [(item["file_name"], item["order"]) for item in test_data]
 
 # --- Predict ---
 model.eval()
 correct = 0
 results = []
-for path, gt in test_items:
-    img = Image.open(path).convert("RGB")
+for img_obj, gt in test_items:
+    img = img_obj.convert("RGB")
     xb = transform(img).unsqueeze(0).to(device)
     with torch.no_grad():
         pred = model(xb).argmax(1).item()
     plabel = idx2label.get(pred, "unknown")
-    results.append((path, gt, plabel))
+    results.append((img_obj, gt, plabel))
     if plabel == gt:
         correct += 1
 
@@ -130,9 +139,9 @@ score = correct / len(results) * 100
 cols = 3
 rows = (len(results) + cols - 1) // cols
 plt.figure(figsize=(12, 3 * rows))
-for i, (p, gt, pl) in enumerate(results):
+for i, (img_obj, gt, pl) in enumerate(results):
     plt.subplot(rows, cols, i + 1)
-    img = Image.open(p).convert("RGB")
+    img = img_obj.convert("RGB")
     plt.imshow(img)
     plt.axis("off")
     plt.title(f"Prédiction du modèle: {pl}\nRéponse: {gt}", fontsize=16)

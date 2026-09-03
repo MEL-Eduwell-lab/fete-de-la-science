@@ -1,0 +1,9 @@
+# Environnement virtuel
+/.venv
+
+# Cache des représentations ResNet (régénéré au premier lancement)
+feat_cache/
+
+# Caches Python
+__pycache__/
+*.py[cod]

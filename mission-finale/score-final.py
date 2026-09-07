@@ -18,7 +18,11 @@ N_TEST_ANIM = 10      # images montrées pendant la scène "examen"
 N_EX = 4              # nombre d'exemples affichés par catégorie pour le plot final
 MAX_FRAMES = 120      # nombre max d'images d'animation pour la scène "apprend"
 DT_TRAIN = 0.28       # secondes entre deux paquets (scène entraînement)
-DT_TEST = 0.6        # secondes entre deux images (scène examen)
+DT_TEST = 1.2        # secondes entre deux images (scène examen)
+DT_REVEAL = 1.4      # secondes entre deux étapes de la figure finale
+
+# Une seule fenêtre, agrandie à l'écran, réutilisée par toutes les scènes.
+FIGSIZE = (16, 9)
 
 FOND = "#0f172a"
 TEXTE = "#e2e8f0"
@@ -122,6 +126,24 @@ def _to_pil(item):
     return Image.open(f).convert("RGB") if isinstance(f, str) else f.convert("RGB")
 
 
+def make_window():
+    """Une seule fenêtre, agrandie à l'écran, réutilisée par toutes les scènes."""
+    fig = plt.figure(figsize=FIGSIZE, facecolor=FOND)
+    mng = fig.canvas.manager
+    for attempt in (
+        lambda: mng.window.showMaximized(),     # Qt5/Qt6
+        lambda: mng.window.state("zoomed"),     # TkAgg
+        lambda: mng.window.wm_state("zoomed"),  # TkAgg (variante)
+        lambda: mng.full_screen_toggle(),       # dernier recours
+    ):
+        try:
+            attempt()
+            break
+        except Exception:
+            continue
+    return fig
+
+
 # --- Images-témoins : suivies paquet par paquet pendant l'entraînement ---
 witness = []
 seen_orders = set()
@@ -204,12 +226,16 @@ for img_obj, gt in test_items:
 test_probs = np.array(test_probs_list)
 score = correct / len(results) * 100
 
+# La fenêtre unique, créée une seule fois et partagée par les trois scènes.
+FIG = make_window()
+
 
 # ======================================================================
 #  SCÈNE 1 — "Le modèle apprend" (erreur affichée BATCH PAR BATCH)
 # ======================================================================
-def scene_entrainement():
-    fig = plt.figure(figsize=(14, 8.5), facecolor=FOND)
+def scene_entrainement(fig):
+    fig.clear()
+    fig.set_facecolor(FOND)
     fig.text(
         0.5, 0.955, "LE MODÈLE APPREND", ha="center",
         color=TEXTE, fontsize=24, fontweight="bold",
@@ -226,15 +252,15 @@ def scene_entrainement():
     for c in range(n_w):
         x = 0.06 + c * (0.88 / n_w)
         w = 0.88 / n_w - 0.03
-        ia = fig.add_axes([x, 0.56, w, 0.32])
+        ia = fig.add_axes([x, 0.60, w, 0.30])
         ia.set_xticks([]); ia.set_yticks([])
         ia.imshow(witness_images[c])
         ia.set_title(f"vérité : {witness_truth[c]}", color=TEXTE, fontsize=10)
         for s in ia.spines.values():
             s.set_color(GRIS)
-        bar_axes.append(fig.add_axes([x, 0.30, w, 0.20]))
+        bar_axes.append(fig.add_axes([x, 0.34, w, 0.18]))
 
-    loss_ax = fig.add_axes([0.06, 0.07, 0.88, 0.15])
+    loss_ax = fig.add_axes([0.07, 0.08, 0.86, 0.16])
 
     # On ne dessine pas forcément tous les paquets (il peut y en avoir
     # beaucoup) : on répartit MAX_FRAMES images sur toute la durée, la
@@ -260,7 +286,7 @@ def scene_entrainement():
             colors[pred] = VERT if ok else "#eab308"
             ba.bar(range(K), p, color=colors)
             ba.set_xticks(range(K))
-            ba.set_xticklabels(labels, rotation=40, ha="right", fontsize=8)
+            ba.set_xticklabels(labels, rotation=35, ha="right", fontsize=9)
             ba.tick_params(colors=TEXTE)
             for sp in ba.spines.values():
                 sp.set_color(GRIS)
@@ -283,7 +309,7 @@ def scene_entrainement():
         loss_ax.set_title(
             f"Paquet {cut} / {TOTAL_BATCHES}   (tour {tour} / {EPOCHS})   —   "
             "« erreur » du modèle (plus la courbe descend, mieux il devine)",
-            color=TEXTE, fontsize=12, loc="left",
+            color=TEXTE, fontsize=12, loc="left", pad=10,
         )
         loss_ax.tick_params(colors="#94a3b8")
         for sp in loss_ax.spines.values():
@@ -293,18 +319,19 @@ def scene_entrainement():
         plt.pause(1.0 if f_i == 0 else DT_TRAIN)
 
     plt.pause(1.5)
-    plt.close(fig)
+    fig.clear()
 
 
 # ======================================================================
 #  SCÈNE 2 — "L'examen"
 # ======================================================================
-def scene_examen():
+def scene_examen(fig):
     idx_probs = list(zip(range(len(results)), test_probs))
     random.shuffle(idx_probs)
     idx_probs = idx_probs[:N_TEST_ANIM]
 
-    fig = plt.figure(figsize=(14, 8.5), facecolor=FOND)
+    fig.clear()
+    fig.set_facecolor(FOND)
     fig.text(
         0.5, 0.955, "L'EXAMEN", ha="center",
         color=TEXTE, fontsize=24, fontweight="bold",
@@ -313,9 +340,9 @@ def scene_examen():
         0.5, 0.915, "des images jamais vues pendant l'entraînement",
         ha="center", color="#94a3b8", fontsize=13,
     )
-    img_ax = fig.add_axes([0.06, 0.16, 0.42, 0.62])
-    bar_ax = fig.add_axes([0.57, 0.20, 0.39, 0.56])
-    score_txt = fig.text(0.5, 0.06, "", ha="center", color=TEXTE, fontsize=16)
+    img_ax = fig.add_axes([0.06, 0.20, 0.40, 0.58])
+    bar_ax = fig.add_axes([0.55, 0.24, 0.40, 0.50])
+    score_txt = fig.text(0.5, 0.08, "", ha="center", color=TEXTE, fontsize=16)
 
     running = 0
     for step, (r_i, probs) in enumerate(idx_probs, 1):
@@ -353,17 +380,17 @@ def scene_examen():
             f"Image {step} / {len(idx_probs)}    —    {running} bonnes réponses"
         )
         fig.canvas.draw()
-        plt.pause(1.0 if step == 1 else DT_TEST)
+        plt.pause(1.4 if step == 1 else DT_TEST)
 
-    plt.pause(2.0)
-    plt.close(fig)
+    plt.pause(3.0)
+    fig.clear()
 
 
 # --- Animations post-entraînement (avant la figure de score) ---
 plt.ion()
-scene_entrainement()
-scene_examen()
-plt.ioff()
+scene_entrainement(FIG)
+scene_examen(FIG)
+# (on reste interactif pour la révélation progressive de la figure finale)
 
 # --- Résultat visuel ---
 bien_classees = [r for r in results if r[2] == r[1]]
@@ -380,7 +407,9 @@ elif score_affiche >= 35:
 else:
     couleur_score = "#ef4444"
 
-fig = plt.figure(figsize=(14, 8.5), facecolor=FOND)
+FIG.clear()
+FIG.set_facecolor(FOND)
+fig = FIG
 
 
 def exemples(items):
@@ -393,7 +422,7 @@ def exemples(items):
 # ------------------------------------------------------------------
 # 1) Le score global : l'information la plus importante, tout en haut
 # ------------------------------------------------------------------
-ax_score = fig.add_axes([0.0, 0.70, 1.0, 0.30])
+ax_score = fig.add_axes([0.0, 0.72, 1.0, 0.28])
 ax_score.axis("off")
 ax_score.text(
     0.5, 0.92, "SCORE FINAL", ha="center", va="top",
@@ -428,14 +457,14 @@ def bloc(items, y_titre, y_images, titre, couleur):
     )
     ech = exemples(items)
     for j in range(N_EX):
-        ax = fig.add_axes([0.06 + j * 0.235, y_images, 0.205, 0.20])
+        ax = fig.add_axes([0.06 + j * 0.235, y_images, 0.205, 0.18])
         ax.set_xticks([])
         ax.set_yticks([])
         if j < len(ech):
             img_obj, gt, pl = ech[j]
             ax.imshow(img_obj.convert("RGB"))
             ax.set_title(
-                f"Prédit : {pl}\nVérité : {gt}", fontsize=11, color=TEXTE, pad=6,
+                f"Prédit : {pl}\nVérité : {gt}", fontsize=10, color=TEXTE, pad=4,
             )
             for s in ax.spines.values():
                 s.set_edgecolor(couleur)
@@ -444,7 +473,17 @@ def bloc(items, y_titre, y_images, titre, couleur):
             ax.axis("off")
 
 
-bloc(bien_classees, 0.63, 0.38, "✅ Bien classées", VERT)
-bloc(mal_classees, 0.30, 0.05, "❌ Mal classées", ROUGE)
+# Révélation progressive : score, puis les bien classées, puis les mal classées.
+fig.canvas.draw()
+plt.pause(DT_REVEAL)
 
+bloc(bien_classees, 0.66, 0.42, "✅ Bien classées", VERT)
+fig.canvas.draw()
+plt.pause(DT_REVEAL)
+
+bloc(mal_classees, 0.34, 0.06, "❌ Mal classées", ROUGE)
+fig.canvas.draw()
+plt.pause(DT_REVEAL)
+
+plt.ioff()
 plt.show()
